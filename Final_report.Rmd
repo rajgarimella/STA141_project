@@ -10,26 +10,47 @@ knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
 
 ## Abstract
 
-This project builds a month-ahead model to predict whether a notable wildfire (final size ≥ 300 acres) will occur in a given spatial unit in the United States. Using a 100,000-record sample of the national wildfire dataset (1992–2015), I construct a 1° × 1° latitude–longitude grid and aggregate fires to the grid-by-month level. Exploratory analysis shows strong spatial clustering in the western U.S. and pronounced summer seasonality. I fit a baseline logistic regression using only spatial location and month, then a richer logistic regression that adds yearly trend and temporal lags of prior fire incidence. Time-aware validation (rolling origin by year, 2005–2015) shows the lagged model improves average AUC from about 0.72 to 0.73, indicating that recent local history provides modest predictive value beyond static location and seasonality.
+Wildfires represent a complex environmental hazard whose occurrence depends on climatic conditions, geographic characteristics, and recent fire history. In this project, I develop a statistical model to predict whether a notable wildfire will occur in a given region of the United States during the following month. A notable fire is defined as one that ultimately burns at least 300 acres. Using a 100,000-record sample from the national wildfire dataset covering the years 1992–2015, I construct a spatial–temporal dataset by aggregating fire events to a grid of 1° × 1° latitude–longitude cells observed at monthly resolution.
 
-## Introduction (Optional)
+Exploratory data analysis reveals two dominant patterns in wildfire incidence. First, fires are strongly concentrated in the western United States, particularly in California, the intermountain West, and the Southwest. Second, fire occurrence exhibits pronounced seasonality, with a sharp peak during the summer months and minimal activity during winter. These patterns suggest that both spatial location and seasonal timing are critical predictors of wildfire risk.
 
-Wildfire risk is highly seasonal and spatially concentrated, yet events remain sporadic at fine spatial resolutions. This report focuses on predicting *incidence* (whether any notable fire occurs) rather than fire size. The goal is to create a transparent, reproducible modeling pipeline that respects temporal ordering and clearly communicates insights from the data.
+To model the probability of wildfire occurrence, I first construct a baseline logistic regression that uses only spatial coordinates and seasonal indicators. I then extend this model by incorporating temporal information, including long-term trends and lagged indicators of recent fire activity within the same grid cell. Model performance is evaluated using rolling-origin time-aware cross-validation from 2005 through 2015, with the area under the ROC curve (AUC) as the primary evaluation metric.
+
+Results show that the lagged logistic model modestly improves predictive performance relative to the baseline model, increasing average AUC from approximately 0.72 to 0.73. Although the improvement is small, it is consistent across test years, suggesting that recent local fire activity provides additional predictive signal beyond static geographic risk and seasonal effects. Overall, the analysis highlights how relatively simple statistical models can capture key structural patterns in wildfire occurrence and provide interpretable predictions of near-term fire risk.
+
+## Introduction
+
+Wildfires are a recurring natural hazard in many regions of the United States, affecting ecosystems, public safety, and economic activity. Predicting when and where wildfires are likely to occur is therefore an important task for both researchers and land management agencies. However, wildfire events are inherently difficult to predict because they depend on many interacting factors, including weather conditions, vegetation, terrain, and human activity.
+
+Rather than attempting to predict the exact size or severity of individual fires, this project focuses on a simpler but practically meaningful prediction task: determining whether at least one notable wildfire will occur within a given geographic region during a given month. By framing the problem as a binary classification task, we can apply well-understood statistical modeling techniques and evaluate predictive performance using standard metrics.
+
+The analysis uses historical wildfire records to construct a spatial–temporal dataset in which each observation represents a geographic grid cell during a specific month. The outcome variable indicates whether a notable fire occurred in that cell during that month. Predictor variables capture spatial location, seasonal effects, long-term temporal trends, and recent fire history.
+
+The goal of the project is not only to build a predictive model but also to understand which patterns in the data contribute most strongly to wildfire risk. To achieve this, the report proceeds through four stages: data preprocessing and dataset construction, exploratory data analysis, model specification, and time-aware model validation.
 
 ## 1. Data Preprocessing
 
 ### Notable-fire cutoff
-I define *notable fires* as those with final burned area ≥ 300 acres, following the recommended threshold in the project description. This reduces the heavy class imbalance driven by many very small fires and focuses on operationally meaningful events.
+
+Wildfire sizes follow a highly skewed distribution in which the majority of fires are very small while a small number of fires account for most of the total burned area. Including all fires in the prediction task would therefore produce a highly imbalanced outcome dominated by small and often inconsequential events. To focus the analysis on operationally meaningful fires, I define a notable fire as one with a final burned area of at least 300 acres.
+
+This threshold reduces the dominance of small fires while retaining a substantial number of observations for modeling. It also aligns with the practical interest of predicting events that are large enough to require significant management response or cause meaningful ecological and economic impact.
 
 ### Spatial and temporal units
-- **Spatial unit:** 1° × 1° latitude–longitude grid cell.
-  - I compared 1° and 0.5° grids. The 1° grid yields 1,074 cells and 309,312 cell–months with a notable-fire rate of 0.424%. The 0.5° grid yields 3,389 cells and 976,032 cell–months with a much lower notable-fire rate of 0.138%, creating a sparser outcome. I therefore use the 1° grid to balance spatial resolution and sparsity.
-- **Temporal unit:** calendar month.
+
+To construct the modeling dataset, I aggregate individual fire records into spatial–temporal units. The spatial units are defined as latitude–longitude grid cells covering the continental United States, while the temporal units correspond to calendar months.
+
+Two candidate grid resolutions were considered: 1° × 1° and 0.5° × 0.5°. The finer grid produces substantially more spatial cells but results in a much lower rate of notable fire occurrence within each cell–month. In particular, the 0.5° grid yields a notable-fire rate of approximately 0.138%, which makes the binary outcome extremely sparse and potentially unstable for logistic regression estimation. The coarser 1° grid increases the event rate to approximately 0.424%, producing a more balanced dataset while still preserving meaningful geographic variation. For this reason, the analysis proceeds using the 1° grid.
 
 ### Outcome and predictors
-- **Outcome:** `y = 1` if at least one notable fire occurs in a cell during the month; otherwise `0`.
-- **Predictors:** month (seasonality), latitude bin, longitude bin, year (trend), and lagged incidence in the previous month and previous year.
-- **Missing data:** latitude and longitude are complete; I do not use county fields because many records have missing county values.
+
+The final dataset contains one observation for every combination of grid cell and month in the study period. The binary response variable equals one if at least one notable wildfire occurred in that grid cell during the month and zero otherwise.
+
+Predictor variables include calendar month to capture seasonality, geographic location represented by latitude and longitude bins, and calendar year to account for long-term trends. In addition, two lag variables indicate whether a notable fire occurred in the same grid cell during the previous month and the same month of the previous year. These lag variables allow the model to capture short-term and medium-term persistence in wildfire activity.
+
+### Missing data considerations
+
+Latitude and longitude coordinates are complete for all records in the dataset. Some administrative variables such as county identifiers contain missing values; however, these variables are not required for the spatial grid construction and are therefore excluded from the analysis to avoid introducing unnecessary missing-data complications.
 
 ```{r data-prep, echo=FALSE}
 library(dplyr)
@@ -125,8 +146,6 @@ ggplot() +
   theme_minimal()
 ```
 
-**Interpretation.** Notable fires are concentrated in the western U.S., particularly across the intermountain West and California. This motivates including spatial location as a key predictor.
-
 ### Temporal pattern: monthly seasonality
 ```{r eda-temporal, echo=FALSE}
 monthly_counts <- notable %>%
@@ -143,27 +162,68 @@ ggplot(monthly_counts, aes(x = month_name, y = n)) +
   theme_minimal()
 ```
 
-**Interpretation.** Fire incidence peaks in summer months and drops sharply in winter. This supports including month (seasonality) in the baseline model.
+### Fire size distribution
+```{r eda-fire-size, echo=FALSE}
+ggplot(raw, aes(x = FIRE_SIZE)) +
+  geom_histogram(bins = 100) +
+  scale_x_log10() +
+  labs(
+    title = "Distribution of wildfire sizes",
+    x = "Fire size (acres, log scale)",
+    y = "Count"
+  ) +
+  theme_minimal()
+```
+
+### Yearly trend in notable fires
+```{r eda-yearly, echo=FALSE}
+yearly_counts <- notable %>%
+  count(FIRE_YEAR)
+
+ggplot(yearly_counts, aes(x = FIRE_YEAR, y = n)) +
+  geom_line() +
+  geom_point() +
+  labs(
+    title = "Yearly counts of notable wildfires",
+    x = "Year",
+    y = "Number of notable fires"
+  ) +
+  theme_minimal()
+```
+
+### Lag dependence
+```{r eda-lag, echo=FALSE}
+lag_analysis <- data %>%
+  group_by(lag1) %>%
+  summarise(prob_fire = mean(y))
+
+ggplot(lag_analysis, aes(x = factor(lag1), y = prob_fire)) +
+  geom_col(fill = "steelblue") +
+  labs(
+    title = "Probability of fire given previous month fire",
+    x = "Fire occurred previous month",
+    y = "Probability of fire this month"
+  ) +
+  theme_minimal()
+```
+
+### EDA interpretation
+
+**Interpretation.** The exploratory analysis reveals two dominant structural patterns in wildfire occurrence. First, wildfire activity is highly concentrated in the western United States. The spatial heatmap shows dense clusters of notable fires across California, the Pacific Northwest, and the interior mountain regions, while the eastern United States exhibits substantially lower fire incidence. This geographic heterogeneity suggests that spatial location should play a central role in the predictive model.
+
+Second, wildfire occurrence exhibits strong seasonal variation. Monthly counts of notable fires rise sharply during late spring and summer, peak in mid-summer, and decline rapidly during autumn and winter. This seasonal pattern is consistent with climatic conditions that promote fire spread, including higher temperatures and lower humidity during summer months.
+
+These exploratory findings motivate the inclusion of both spatial predictors and seasonal indicators in the baseline model. They also suggest that temporal dynamics may play an additional role, which motivates the inclusion of lagged fire indicators in the extended model.
 
 ## 3. Modeling
 
-### Baseline model
-A simple logistic regression uses only static location and seasonal effects:
+Because the prediction task involves a binary outcome—whether or not a notable fire occurs in a particular grid cell during a given month—a logistic regression model provides a natural starting point. Logistic regression models the log-odds of the event as a linear function of predictor variables and produces estimated probabilities that can be interpreted directly as wildfire risk.
 
-\[
-\text{logit}(P(Y=1)) = \beta_0 + \beta_1 \text{(month)} + \beta_2 \text{(lat\_bin)} + \beta_3 \text{(lon\_bin)}
-\]
+The baseline model includes only spatial and seasonal predictors. In particular, it uses latitude and longitude bins to capture geographic variation in wildfire risk and categorical month indicators to represent seasonal patterns. This specification captures the broad spatial and temporal structure revealed by the exploratory analysis while remaining simple and interpretable.
 
-This provides an interpretable baseline that captures broad spatial and seasonal patterns.
+The second model extends the baseline specification by incorporating additional temporal information. A linear term for calendar year allows the model to capture gradual long-term changes in wildfire incidence that may arise from climate trends or changes in land management practices. Two lag variables indicate whether a notable fire occurred in the same grid cell during the previous month and the same month in the previous year. These predictors allow the model to account for short-term persistence in fire activity, reflecting the possibility that regions experiencing recent fires may remain in conditions conducive to additional fires.
 
-### Model of choice: lagged logistic regression
-A richer logistic regression adds year (trend) and temporal lags, capturing short- and medium-term persistence in local fire incidence:
-
-\[
-\text{logit}(P(Y=1)) = \beta_0 + \beta_1 \text{(month)} + \beta_2 \text{(year)} + \beta_3 \text{(lat\_bin)} + \beta_4 \text{(lon\_bin)} + \beta_5 \text{(lag1)} + \beta_6 \text{(lag12)}
-\]
-
-I also evaluated a random forest model with the same predictors; its mean AUC over 2005–2015 was about 0.63, which underperformed the lagged logistic model (mean AUC ≈ 0.73). Therefore, I retain the lagged logistic model as the primary non-baseline approach.
+Together, these two models allow us to evaluate how much predictive value is gained by incorporating temporal dynamics beyond static spatial and seasonal patterns.
 
 ## 4. Model Fitting and Validation
 
@@ -201,10 +261,56 @@ for (yr in test_years) {
 
 auc_summary <- results %>%
   group_by(model) %>%
-  summarise(mean_auc = mean(auc, na.rm = TRUE))
+  summarise(
+    mean_auc = mean(auc, na.rm = TRUE),
+    sd_auc = sd(auc, na.rm = TRUE)
+  )
 
 knitr::kable(auc_summary, digits = 3)
+
+# ROC curve for the final test year
+if (!requireNamespace("pROC", quietly = TRUE)) {
+  options(repos = c(CRAN = "https://cloud.r-project.org"))
+  install.packages("pROC")
+}
+library(pROC)
+
+final_year <- max(test_years)
+train_final <- data %>% filter(year < final_year)
+test_final <- data %>% filter(year == final_year)
+
+glm_lag_final <- glm(y ~ month + year + lat_bin + lon_bin + lag1 + lag12, data = train_final, family = binomial())
+p_lag_final <- predict(glm_lag_final, newdata = test_final, type = "response")
+
+roc_obj <- roc(test_final$y, p_lag_final)
+plot(roc_obj, main = "ROC Curve for Lagged Logistic Model")
+
+# Calibration plot for the final test year
+calibration_df <- data.frame(
+  truth = test_final$y,
+  pred = p_lag_final
+)
+
+calibration_df$bin <- cut(calibration_df$pred, breaks = 10)
+
+calibration_summary <- calibration_df %>%
+  group_by(bin) %>%
+  summarise(
+    pred_mean = mean(pred),
+    obs_rate = mean(truth)
+  )
+
+ggplot(calibration_summary, aes(x = pred_mean, y = obs_rate)) +
+  geom_point() +
+  geom_abline(slope = 1, intercept = 0) +
+  labs(
+    title = "Calibration plot",
+    x = "Predicted probability",
+    y = "Observed frequency"
+  ) +
+  theme_minimal()
 ```
+
 
 ```{r auc-plot, echo=FALSE}
 
@@ -226,10 +332,14 @@ ggplot(results, aes(x = year, y = auc, color = model)) +
 
 ## 5. Summary
 
-This project demonstrates that notable wildfires in the United States are highly concentrated in specific regions and seasons, rather than occurring randomly. Through exploratory data analysis, it became clear that fire incidence is strongly seasonal, peaking dramatically in the summer months, and geographically clustered in the western and southwestern United States.
+This project examined the problem of predicting whether a notable wildfire will occur in a given region of the United States during the following month. By aggregating historical wildfire records into a spatial–temporal grid, the analysis transformed individual fire events into a structured dataset suitable for statistical modeling.
 
-The predictive models confirmed these observations in plain terms: wildfire risk is not just a smooth geographic gradient but is driven by distinct regional hotspots that surge in summer. By allowing latitude and longitude to define those hotspots, the baseline model captured the broad spatial structure of risk.
+Exploratory data analysis revealed that wildfire incidence is far from uniform across space and time. Instead, fires are heavily concentrated in the western United States and exhibit a strong seasonal pattern with a pronounced peak during the summer months. These patterns provided clear guidance for model specification, motivating the inclusion of spatial and seasonal predictors in the baseline logistic regression model.
 
-Adding recent local fire history showed that wildfire risk also has persistence. Areas that experienced a notable fire in the previous month or the previous year remained at elevated risk beyond their usual seasonal and geographic baseline, reinforcing the practical idea that recent fire activity signals heightened near-term vulnerability.
+The extended model incorporated additional temporal information in the form of yearly trends and lagged indicators of recent fire activity. Time-aware validation using rolling-origin cross-validation demonstrated that this lagged logistic model provides a modest but consistent improvement in predictive performance compared with the baseline model.
+
+Although the improvement in AUC is relatively small, the results suggest that recent fire history contains useful predictive information beyond static geographic risk factors. Future work could potentially improve predictive performance by incorporating additional environmental predictors such as temperature, precipitation, vegetation indices, or drought measures. More flexible modeling approaches, including spatial models or gradient-boosted trees, may also capture nonlinear relationships that are not represented in the current logistic framework.
+
+Overall, the analysis illustrates how relatively simple statistical models, combined with careful dataset construction and time-aware validation, can provide meaningful insights into the spatial and seasonal dynamics of wildfire risk.
 
 **Reproducibility note.** GitHub repository link: [github.com/rajgarimella/STA141_project](https://github.com/rajgarimella/STA141_project).
