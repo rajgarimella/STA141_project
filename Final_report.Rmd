@@ -1,0 +1,218 @@
+---
+title: "STA 141A: Predicting Wildfire Incidence in the United States"
+author: "Raj Garimella"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+## Abstract
+
+This project builds a month-ahead model to predict whether a notable wildfire (final size ≥ 300 acres) will occur in a given spatial unit in the United States. Using a 100,000-record sample of the national wildfire dataset (1992–2015), I construct a 1° × 1° latitude–longitude grid and aggregate fires to the grid-by-month level. Exploratory analysis shows strong spatial clustering in the western U.S. and pronounced summer seasonality. I fit a baseline logistic regression using only spatial location and month, then a richer logistic regression that adds yearly trend and temporal lags of prior fire incidence. Time-aware validation (rolling origin by year, 2005–2015) shows the lagged model improves average AUC from about 0.72 to 0.73, indicating that recent local history provides modest predictive value beyond static location and seasonality.
+
+## Introduction (Optional)
+
+Wildfire risk is highly seasonal and spatially concentrated, yet events remain sporadic at fine spatial resolutions. This report focuses on predicting *incidence* (whether any notable fire occurs) rather than fire size. The goal is to create a transparent, reproducible modeling pipeline that respects temporal ordering and clearly communicates insights from the data.
+
+## 1. Data Preprocessing
+
+### Notable-fire cutoff
+I define *notable fires* as those with final burned area ≥ 300 acres, following the recommended threshold in the project description. This reduces the heavy class imbalance driven by many very small fires and focuses on operationally meaningful events.
+
+### Spatial and temporal units
+- **Spatial unit:** 1° × 1° latitude–longitude grid cell.
+  - I compared 1° and 0.5° grids. The 1° grid yields 1,074 cells and 309,312 cell–months with a notable-fire rate of 0.424%. The 0.5° grid yields 3,389 cells and 976,032 cell–months with a much lower notable-fire rate of 0.138%, creating a sparser outcome. I therefore use the 1° grid to balance spatial resolution and sparsity.
+- **Temporal unit:** calendar month.
+
+### Outcome and predictors
+- **Outcome:** `y = 1` if at least one notable fire occurs in a cell during the month; otherwise `0`.
+- **Predictors:** month (seasonality), latitude bin, longitude bin, year (trend), and lagged incidence in the previous month and previous year.
+- **Missing data:** latitude and longitude are complete; I do not use county fields because many records have missing county values.
+
+```{r data-prep, echo=FALSE}
+library(dplyr)
+library(tidyr)
+library(readr)
+library(lubridate)
+library(tidyverse)
+
+cell_size <- 1.0
+raw <- read_csv("wildfires_sample_100k.csv", show_col_types = FALSE) %>%
+  mutate(
+    date = as.Date(DISCOVERY_DOY - 1, origin = paste0(FIRE_YEAR, "-01-01")),
+    month_date = floor_date(date, "month"),
+    lat_bin = floor(LATITUDE / cell_size) * cell_size,
+    lon_bin = floor(LONGITUDE / cell_size) * cell_size,
+    cell_id = paste(lat_bin, lon_bin, sep = "_")
+  )
+
+notable <- raw %>% filter(FIRE_SIZE >= 300)
+
+cells <- raw %>% distinct(cell_id, lat_bin, lon_bin)
+months <- raw %>% distinct(month_date) %>% arrange(month_date)
+
+grid <- expand_grid(cell_id = cells$cell_id, month_date = months$month_date) %>%
+  left_join(cells, by = "cell_id")
+
+counts <- notable %>% count(cell_id, month_date, name = "n_notable")
+
+data <- grid %>%
+  left_join(counts, by = c("cell_id", "month_date")) %>%
+  mutate(
+    n_notable = ifelse(is.na(n_notable), 0L, n_notable),
+    y = n_notable > 0
+  ) %>%
+  group_by(cell_id) %>%
+  arrange(month_date, .by_group = TRUE) %>%
+  mutate(
+    lag1 = dplyr::lag(as.integer(y), 1, default = 0L),
+    lag12 = dplyr::lag(as.integer(y), 12, default = 0L)
+  ) %>%
+  ungroup() %>%
+  mutate(
+    year = year(month_date),
+    month = factor(month(month_date))
+  )
+
+summary_tbl <- tibble(
+  `Time span` = paste(min(raw$FIRE_YEAR), max(raw$FIRE_YEAR)),
+  `Grid size` = "1° × 1°",
+  `# grid cells` = n_distinct(data$cell_id),
+  `# months` = n_distinct(data$month_date),
+  `Rows (cell-months)` = nrow(data),
+  `Notable-fire rate` = paste0(round(mean(data$y) * 100, 3), "%"),
+  `Predictors` = "month, year, lat_bin, lon_bin, lag1, lag12"
+)
+knitr::kable(summary_tbl)
+```
+
+## 2. Exploratory Data Analysis
+
+The EDA focuses on spatial clustering and seasonality, both of which guide the choice of predictors.
+
+### Spatial pattern: notable fires
+```{r eda-spatial, echo=FALSE}
+
+spatial_df <- notable %>%
+  select(LONGITUDE, LATITUDE)
+
+ggplot(spatial_df, aes(x = LONGITUDE, y = LATITUDE)) +
+  stat_bin2d(bins = 45) +
+  scale_fill_gradient(low = "#fde0c5", high = "#d94801") +
+  coord_fixed() +
+  labs(
+    title = "Spatial clustering of notable wildfires",
+    x = "Longitude",
+    y = "Latitude",
+    fill = "Count"
+  ) +
+  theme_minimal()
+```
+
+**Interpretation.** Notable fires are concentrated in the western U.S., particularly across the intermountain West and California. This motivates including spatial location as a key predictor.
+
+### Temporal pattern: monthly seasonality
+```{r eda-temporal, echo=FALSE}
+monthly_counts <- notable %>%
+  count(month_date)
+
+ggplot(monthly_counts, aes(x = month_date, y = n)) +
+  geom_line(color = "#2b8cbe") +
+  labs(
+    title = "Monthly counts of notable wildfires",
+    x = "Month",
+    y = "Number of notable fires"
+  ) +
+  theme_minimal()
+```
+
+**Interpretation.** Fire incidence peaks in summer months and drops sharply in winter. This supports including month (seasonality) in the baseline model.
+
+## 3. Modeling
+
+### Baseline model
+A simple logistic regression uses only static location and seasonal effects:
+
+\[
+\text{logit}(P(Y=1)) = \beta_0 + \beta_1 \text{(month)} + \beta_2 \text{(lat\_bin)} + \beta_3 \text{(lon\_bin)}
+\]
+
+This provides an interpretable baseline that captures broad spatial and seasonal patterns.
+
+### Model of choice: lagged logistic regression
+A richer logistic regression adds year (trend) and temporal lags, capturing short- and medium-term persistence in local fire incidence:
+
+\[
+\text{logit}(P(Y=1)) = \beta_0 + \beta_1 \text{(month)} + \beta_2 \text{(year)} + \beta_3 \text{(lat\_bin)} + \beta_4 \text{(lon\_bin)} + \beta_5 \text{(lag1)} + \beta_6 \text{(lag12)}
+\]
+
+I also evaluated a random forest model with the same predictors; its mean AUC over 2005–2015 was about 0.63, which underperformed the lagged logistic model (mean AUC ≈ 0.73). Therefore, I retain the lagged logistic model as the primary non-baseline approach.
+
+## 4. Model Fitting and Validation
+
+To avoid temporal leakage, I use a rolling-origin evaluation: for each test year from 2005–2015, train on all prior years and evaluate on the held-out year. The primary metric is AUC.
+
+```{r validation, echo=FALSE}
+auc_roc <- function(truth, score) {
+  truth <- as.integer(truth)
+  pos <- truth == 1
+  n_pos <- sum(pos)
+  n_neg <- sum(!pos)
+  if (n_pos == 0 || n_neg == 0) return(NA_real_)
+  ranks <- rank(score, ties.method = "average")
+  (sum(ranks[pos]) - n_pos * (n_pos + 1) / 2) / (n_pos * n_neg)
+}
+
+test_years <- 2005:2015
+results <- data.frame(year = integer(), model = character(), auc = double())
+
+for (yr in test_years) {
+  train <- data %>% filter(year < yr)
+  test <- data %>% filter(year == yr)
+
+  glm_base <- glm(y ~ month + lat_bin + lon_bin, data = train, family = binomial())
+  p_base <- predict(glm_base, newdata = test, type = "response")
+  auc_base <- auc_roc(test$y, p_base)
+
+  glm_lag <- glm(y ~ month + year + lat_bin + lon_bin + lag1 + lag12, data = train, family = binomial())
+  p_lag <- predict(glm_lag, newdata = test, type = "response")
+  auc_lag <- auc_roc(test$y, p_lag)
+
+  results <- rbind(results, data.frame(year = yr, model = "Baseline logistic", auc = auc_base))
+  results <- rbind(results, data.frame(year = yr, model = "Lagged logistic", auc = auc_lag))
+}
+
+auc_summary <- results %>%
+  group_by(model) %>%
+  summarise(mean_auc = mean(auc, na.rm = TRUE))
+
+knitr::kable(auc_summary, digits = 3)
+```
+
+```{r auc-plot, echo=FALSE}
+
+
+ggplot(results, aes(x = year, y = auc, color = model)) +
+  geom_line() +
+  geom_point() +
+  scale_color_manual(values = c("Baseline logistic" = "#2b8cbe", "Lagged logistic" = "#e34a33")) +
+  labs(
+    title = "Time-aware AUC by test year",
+    x = "Test year",
+    y = "AUC",
+    color = "Model"
+  ) +
+  theme_minimal()
+```
+
+**Interpretation.** The lagged logistic model consistently matches or slightly improves on the baseline, with a mean AUC of about 0.73 versus 0.72. The gain is modest but stable, indicating that prior-month and prior-year fire activity contains useful predictive signal.
+
+## 5. Summary
+
+- Notable wildfires are spatially clustered and strongly seasonal, motivating location and month as key predictors.
+- A simple baseline logistic model captures much of the spatial/seasonal signal (mean AUC ≈ 0.72).
+- Adding temporal lags yields a small but consistent improvement (mean AUC ≈ 0.73), suggesting local persistence in wildfire risk.
+
+**Reproducibility note.** GitHub repository link: [github.com/rajgarimella/STA141_project](https://github.com/rajgarimella/STA141_project).
