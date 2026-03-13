@@ -94,14 +94,28 @@ The EDA focuses on spatial clustering and seasonality, both of which guide the c
 
 ### Spatial pattern: notable fires
 ```{r eda-spatial, echo=FALSE}
+library(maps)
+us_map <- map_data("state")
 
 spatial_df <- notable %>%
-  select(LONGITUDE, LATITUDE)
+  select(LONGITUDE, LATITUDE) %>%
+  filter(LONGITUDE > -130 & LONGITUDE < -60 & LATITUDE > 20 & LATITUDE < 55)
 
-ggplot(spatial_df, aes(x = LONGITUDE, y = LATITUDE)) +
-  stat_bin2d(bins = 45) +
+ggplot() +
+  geom_polygon(
+    data = us_map,
+    aes(x = long, y = lat, group = group),
+    fill = "white",
+    color = "gray80"
+  ) +
+  stat_bin2d(
+    data = spatial_df,
+    aes(x = LONGITUDE, y = LATITUDE),
+    bins = 45,
+    alpha = 0.9
+  ) +
   scale_fill_gradient(low = "#fde0c5", high = "#d94801") +
-  coord_fixed() +
+  coord_fixed(ratio = 1.3) +
   labs(
     title = "Spatial clustering of notable wildfires",
     x = "Longitude",
@@ -116,14 +130,15 @@ ggplot(spatial_df, aes(x = LONGITUDE, y = LATITUDE)) +
 ### Temporal pattern: monthly seasonality
 ```{r eda-temporal, echo=FALSE}
 monthly_counts <- notable %>%
-  count(month_date)
+  mutate(month_name = month(month_date, label = TRUE, abbr = TRUE)) %>%
+  count(month_name)
 
-ggplot(monthly_counts, aes(x = month_date, y = n)) +
-  geom_line(color = "#2b8cbe") +
+ggplot(monthly_counts, aes(x = month_name, y = n)) +
+  geom_col(fill = "#2b8cbe", alpha = 0.8) +
   labs(
-    title = "Monthly counts of notable wildfires",
-    x = "Month",
-    y = "Number of notable fires"
+    title = "Total counts of notable wildfires by calendar month",
+    x = "Calendar Month",
+    y = "Total number of notable fires"
   ) +
   theme_minimal()
 ```
