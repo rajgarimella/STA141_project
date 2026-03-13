@@ -226,8 +226,10 @@ ggplot(results, aes(x = year, y = auc, color = model)) +
 
 ## 5. Summary
 
-- Notable wildfires are spatially clustered and strongly seasonal, motivating location and month as key predictors.
-- A simple baseline logistic model captures much of the spatial/seasonal signal (mean AUC ≈ 0.72).
-- Adding temporal lags yields a small but consistent improvement (mean AUC ≈ 0.73), suggesting local persistence in wildfire risk.
+This project demonstrates that notable wildfires in the United States are highly concentrated in specific regions and seasons, rather than occurring randomly. Through exploratory data analysis, it became clear that fire incidence is strongly seasonal, peaking dramatically in the summer months, and geographically clustered in the western and southwestern United States.
+
+The predictive models confirmed these observations in plain terms: wildfire risk is not just a smooth geographic gradient but is driven by distinct regional hotspots that surge in summer. By allowing latitude and longitude to define those hotspots, the baseline model captured the broad spatial structure of risk.
+
+Adding recent local fire history showed that wildfire risk also has persistence. Areas that experienced a notable fire in the previous month or the previous year remained at elevated risk beyond their usual seasonal and geographic baseline, reinforcing the practical idea that recent fire activity signals heightened near-term vulnerability.
 
 **Reproducibility note.** GitHub repository link: [github.com/rajgarimella/STA141_project](https://github.com/rajgarimella/STA141_project).

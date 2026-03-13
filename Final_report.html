@@ -532,14 +532,22 @@ signal.</p>
 </div>
 <div id="summary" class="section level2">
 <h2>5. Summary</h2>
-<ul>
-<li>Notable wildfires are spatially clustered and strongly seasonal,
-motivating location and month as key predictors.</li>
-<li>A simple baseline logistic model captures much of the
-spatial/seasonal signal (mean AUC ≈ 0.72).</li>
-<li>Adding temporal lags yields a small but consistent improvement (mean
-AUC ≈ 0.73), suggesting local persistence in wildfire risk.</li>
-</ul>
+<p>This project demonstrates that notable wildfires in the United States
+are highly concentrated in specific regions and seasons, rather than
+occurring randomly. Through exploratory data analysis, it became clear
+that fire incidence is strongly seasonal, peaking dramatically in the
+summer months, and geographically clustered in the western and
+southwestern United States.</p>
+<p>The predictive models confirmed these observations in plain terms:
+wildfire risk is not just a smooth geographic gradient but is driven by
+distinct regional hotspots that surge in summer. By allowing latitude
+and longitude to define those hotspots, the baseline model captured the
+broad spatial structure of risk.</p>
+<p>Adding recent local fire history showed that wildfire risk also has
+persistence. Areas that experienced a notable fire in the previous month
+or the previous year remained at elevated risk beyond their usual
+seasonal and geographic baseline, reinforcing the practical idea that
+recent fire activity signals heightened near-term vulnerability.</p>
 <p><strong>Reproducibility note.</strong> GitHub repository link: <a href="https://github.com/rajgarimella/STA141_project">github.com/rajgarimella/STA141_project</a>.</p>
 </div>
 
