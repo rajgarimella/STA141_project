@@ -209,11 +209,15 @@ ggplot(lag_analysis, aes(x = factor(lag1), y = prob_fire)) +
 
 ### EDA interpretation
 
-**Interpretation.** The exploratory analysis reveals two dominant structural patterns in wildfire occurrence. First, wildfire activity is highly concentrated in the western United States. The spatial heatmap shows dense clusters of notable fires across California, the Pacific Northwest, and the interior mountain regions, while the eastern United States exhibits substantially lower fire incidence. This geographic heterogeneity suggests that spatial location should play a central role in the predictive model.
+**Interpretation.** The exploratory data analysis reveals several intersecting structural patterns that dictate wildfire occurrence.
 
-Second, wildfire occurrence exhibits strong seasonal variation. Monthly counts of notable fires rise sharply during late spring and summer, peak in mid-summer, and decline rapidly during autumn and winter. This seasonal pattern is consistent with climatic conditions that promote fire spread, including higher temperatures and lower humidity during summer months.
+First, the spatial distribution is highly non-uniform. The spatial heatmap (eda_spatial.png) clearly demonstrates dense clusters of notable fires across the Western United States, particularly in California, the Pacific Northwest, and the intermountain regions. Interestingly, the plot also reveals a distinct, dense cluster in the Southeast, notably Florida, highlighting that fire risk is not strictly a Western phenomenon but is closely tied to specific regional climates and ecosystems.
 
-These exploratory findings motivate the inclusion of both spatial predictors and seasonal indicators in the baseline model. They also suggest that temporal dynamics may play an additional role, which motivates the inclusion of lagged fire indicators in the extended model.
+Second, temporal patterns manifest on multiple scales. At the monthly level, there is a severe seasonal dependency (eda_temporal.png); notable fire counts are negligible in the winter, begin climbing rapidly in late spring, and peak sharply in July and August before rapidly declining. At the multi-year scale, the annual occurrence of notable fires (eda_yearly.png) exhibits high volatility rather than a smooth monotonic trend, with extreme spike years (e.g., 2000, 2006, 2011) likely corresponding to severe, macro-level drought conditions.
+
+Third, the fire size distribution (eda_fire_size.png) underscores the highly skewed nature of these events. The strict 300-acre cutoff creates a massive initial spike, but the long right tail on the logarithmic scale confirms that while most notable fires are relatively close to the threshold, the dataset successfully captures the rare, devastating "mega-fires" that span tens of thousands of acres.
+
+Finally, the lag dependence analysis (eda_lag.png) uncovers a powerful short-term temporal signal. The empirical probability of a notable fire occurring in a grid cell is an order of magnitude higher (exceeding 0.05) if a fire occurred in that exact cell during the previous month, compared to a near-zero probability if no prior fire occurred. This stark contrast strongly justifies the inclusion of autoregressive lag features in the predictive modeling, as local landscapes remain highly vulnerable immediately following an initial fire event.
 
 ## 3. Modeling
 
@@ -311,9 +315,7 @@ ggplot(calibration_summary, aes(x = pred_mean, y = obs_rate)) +
   theme_minimal()
 ```
 
-
 ```{r auc-plot, echo=FALSE}
-
 
 ggplot(results, aes(x = year, y = auc, color = model)) +
   geom_line() +
@@ -328,7 +330,14 @@ ggplot(results, aes(x = year, y = auc, color = model)) +
   theme_minimal()
 ```
 
-**Interpretation.** The lagged logistic model consistently matches or slightly improves on the baseline, with a mean AUC of about 0.73 versus 0.72. The gain is modest but stable, indicating that prior-month and prior-year fire activity contains useful predictive signal.
+**Interpretation.** The rolling-origin validation framework provides a robust assessment of the models' ability to generalize to unseen future years.
+
+Looking at the time-aware AUC trajectory (auc_plot.png), predictive performance is highly volatile year-over-year, ranging from a low near 0.66 in 2008 to peaks approaching 0.78 in 2014. This volatility suggests that certain years are inherently harder to predict, perhaps due to anomalous weather events not captured by static geographic and seasonal indicators. However, the lagged logistic model consistently outperforms or matches the baseline model across almost every test year. This consistent lift confirms that recent local fire history (the prior-month and prior-year lags) provides a durable, independent signal beyond basic spatial and seasonal risk.
+
+The ROC curve for the final test year (roc_curve.png) visualizes the lagged model's discriminatory power, showing a clear lift above the diagonal random-guess line. It effectively separates grid-months with fires from those without, though the curve's shape indicates that achieving very high sensitivity (catching every fire) would require accepting a substantial false-positive rate.
+
+Crucially, the calibration plot (calibration_plot.png) reveals an important limitation regarding the model's absolute probability estimates. At the lower end of the probability spectrum (below 0.04), the model is reasonably well-calibrated, with predicted probabilities closely tracking observed frequencies along the identity line. However, for the instances where the model predicts a higher probability of fire (above 0.06), the observed frequency drops to zero, indicating severe over-prediction. This miscalibration at the high end is a common artifact when modeling highly imbalanced data (an overall ~0.424% event rate) using standard logistic regression. It suggests that while the model ranks relative risk quite well (as evidenced by the AUC), the absolute probability outputs for extreme high-risk scenarios should be interpreted with caution.
+
 
 ## 5. Summary
 
