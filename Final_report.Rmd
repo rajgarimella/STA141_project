@@ -245,13 +245,13 @@ Because the prediction task involves a binary outcome—whether or not a notable
 
 The baseline model includes only spatial and seasonal predictors, using latitude and longitude bins to capture geographic variation and categorical month indicators to represent seasonality. This specification captures the broad spatial and temporal structure revealed by the exploratory analysis while remaining simple and interpretable.
 \[
-\log\left(\frac{P(Y=1)}{1-P(Y=1)}\right) = \beta_0 + \beta_1 \text{(month)} + \beta_2 \text{(lat\_bin)} + \beta_3 \text{(lon\_bin)}
+\log\left(\frac{P(Y=1)}{1-P(Y=1)}\right) = \beta_0 + \beta_1 \text{(month)} + \beta_2 \text{(lat bin)} + \beta_3 \text{(lon bin)}
 \]
 
 The extended model adds year and lagged indicators:
 
 \[
-\log\left(\frac{P(Y=1)}{1-P(Y=1)}\right) = \beta_0 + \beta_1 \text{(month)} + \beta_2 \text{(year)} + \beta_3 \text{(lat\_bin)} + \beta_4 \text{(lon\_bin)} + \beta_5 \text{(lag1)} + \beta_6 \text{(lag12)}
+\log\left(\frac{P(Y=1)}{1-P(Y=1)}\right) = \beta_0 + \beta_1 \text{(month)} + \beta_2 \text{(year)} + \beta_3 \text{(lat bin)} + \beta_4 \text{(lon bin)} + \beta_5 \text{(lag 1)} + \beta_6 \text{(lag 12)}
 \]
 
 
