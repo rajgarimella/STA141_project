@@ -725,6 +725,24 @@ logistic regression. It suggests that while the model ranks relative
 risk quite well (as evidenced by the AUC), the absolute probability
 outputs for extreme high-risk scenarios should be interpreted with
 caution.</p>
+<p>Beyond predictive performance, the extended model provides insight
+into the factors associated with notable wildfire occurrence. The
+positive contribution of the <strong>lag1</strong> predictor indicates
+short-term temporal dependence: grid cells that experienced a notable
+fire in the previous month have an elevated probability of another fire,
+reflecting the persistence of favorable burning conditions such as dry
+vegetation and weather patterns. The <strong>lag12</strong> variable
+captures seasonal recurrence, suggesting that locations prone to fires
+in a given month often exhibit similar risk at the same time in
+subsequent years. The <strong>month</strong> indicators capture the
+strong seasonal cycle in wildfire activity, with substantially higher
+risk during peak summer months when temperatures are high and fuel
+moisture is low. Spatial predictors (<strong>latitude</strong> and
+<strong>longitude</strong>) account for persistent geographic
+differences in fire risk, reflecting climatic and ecological variation
+across regions. Together, these effects indicate that wildfire risk is
+shaped by a combination of seasonal climate patterns, geographic
+heterogeneity, and short-term persistence in local fire activity.</p>
 </div>
 <div id="summary" class="section level2">
 <h2>5. Summary</h2>
